@@ -1,0 +1,60 @@
+{
+    "id": "com.heatmiser",
+    "version": "1.0.0",
+    "category": "climate",
+    "compatibility": ">=0.1.0",
+    "name": {
+        "en": "Heatmiser Thermostat",
+        "nl": "Heatmiser Thermostaat"
+    },
+    "description": {
+        "en": "This app lets you control your Heatmiser thermostat using Homey!",
+        "nl": "Laat Homey je Heatmiser thermostaat besturen door middel van deze app!"
+    },
+    "author": {
+        "name": "Robin Bolscher",
+        "email": "robin@athom.nl"
+    },
+    "images": {
+        "large": "assets/images/large.jpg",
+        "small": "assets/images/small.jpg"
+    },
+    "permissions": [
+    ],
+    "speech": [
+
+    ],
+    "drivers": [
+        {
+            "id": "NeoSmart",
+            "name": {
+                "en": "Heatmiser Neo Smart",
+                "nl": "Heatmiser Neo Smart"
+            },
+            "images": {
+                "large": "drivers/NeoSmart/assets/images/large.jpg",
+                "small": "drivers/NeoSmart/assets/images/small.jpg"
+            },
+            "class": "thermostat",
+            "capabilities": [
+                "target_temperature",
+                "measure_temperature"
+            ],
+            "pair": [
+                {
+                    "id": "list_thermostats",
+                    "template": "list_devices",
+                    "navigation": {
+                        "next": "add_thermostats"
+                    }
+                },
+                {
+                    "id": "add_thermostats",
+                    "template": "add_devices"
+                }
+            ]
+        }
+    ],
+    "flow": {
+    }
+}
