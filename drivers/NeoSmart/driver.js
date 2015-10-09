@@ -42,7 +42,7 @@ module.exports.init = function ( devices_data, callback ) {
             list.push( {
                 name: device_id,
                 data: {
-                    id: device_id,
+                    id: device_id + device.DEVICE_TYPE,
                     target_temperature: device.CURRENT_SET_TEMPERATURE,
                     measured_temperature: device.CURRENT_TEMPERATURE
                 }
