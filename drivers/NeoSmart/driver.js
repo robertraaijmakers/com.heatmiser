@@ -3,8 +3,8 @@
 /**
  * Dependencies
  */
-var heatmiser = require( 'heatmiser' );
-var _ = require( 'underscore' );
+var heatmiser = require('heatmiser');
+var _ = require('underscore');
 
 /**
  * Arrays used to store devices
@@ -12,6 +12,7 @@ var _ = require( 'underscore' );
  */
 var devices = [];
 var temp_devices = [];
+var installed_devices = [];
 
 /**
  * The Heatmiser Neo Smart client
@@ -25,9 +26,38 @@ var neo;
  * @param devices_data
  * @param callback
  */
-module.exports.init = function ( devices_data, callback ) {
+module.exports.init = function (devices_data, callback) {
+	installed_devices = devices_data;
 
-    callback( true );
+	neo = new heatmiser.Neo();
+
+	// Found devices
+	neo.on('ready', function (host, port, found_devices) {
+
+		// Check for each device if it is already installed, or should be
+		found_devices.forEach(function (device) {
+			var device_id = generateDeviceID(device.device, device.DEVICE_TYPE);
+
+			// Check if device is not already installed
+			if (!getDevice(device_id, devices) && !getDevice(device_id, temp_devices)) {
+
+				// Check if device was installed before
+				var list = (_.findWhere(installed_devices, {id: device_id})) ? devices : temp_devices;
+
+				// Add device to array of found devices (for multiple devices support)
+				list.push({
+					name: device.device,
+					data: {
+						id: device_id,
+						target_temperature: device.CURRENT_SET_TEMPERATURE,
+						measured_temperature: device.CURRENT_TEMPERATURE
+					}
+				});
+			}
+		});
+	});
+
+	callback(null, true);
 };
 
 /**
@@ -35,50 +65,55 @@ module.exports.init = function ( devices_data, callback ) {
  */
 module.exports.pair = function (socket) {
 
-    socket.on("list_devices", function ( data, callback ) {
+	socket.on("list_devices", function (data, callback) {
+		neo = new heatmiser.Neo();
 
-        neo = new heatmiser.Neo();
+		// Found devices
+		neo.on('ready', function (host, port, found_devices) {
 
-        // Found devices
-        neo.on( 'ready', function ( host, port, found_devices ) {
+			// Check for each device if it is already installed, or should be
+			found_devices.forEach(function (device) {
+				var device_id = generateDeviceID(device.device, device.DEVICE_TYPE);
 
-            // Check for each device if it is already installed, or should be
-            found_devices.forEach( function ( device ) {
-                var device_id = device.device;
+				// Check if device is not already installed
+				if (!getDevice(device_id, devices) && !getDevice(device_id, temp_devices)) {
 
-                // Check if device was installed before
-                var list = (_.findWhere( devices_data, { id: device_id } )) ? devices : temp_devices;
+					// Check if device was installed before
+					var list = (_.findWhere(installed_devices, {id: device_id})) ? devices : temp_devices;
 
-                // Add device to array of found devices (for multiple devices support)
-                list.push( {
-                    name: device_id,
-                    data: {
-                        id: generateDeviceID( device_id, device.DEVICE_TYPE ),
-                        target_temperature: device.CURRENT_SET_TEMPERATURE,
-                        measured_temperature: device.CURRENT_TEMPERATURE
-                    }
-                } );
-            } );
-        } );
+					// Add device to array of found devices (for multiple devices support)
+					list.push({
+						name: device.device,
+						data: {
+							id: device_id,
+							target_temperature: device.CURRENT_SET_TEMPERATURE,
+							measured_temperature: device.CURRENT_TEMPERATURE
+						}
+					});
+				}
+			});
 
-        var devices = [];
-        temp_devices.forEach( function ( temp_device ) {
-            devices.push( {
-                data: {
-                    id: temp_device.data.id
-                },
-                name: temp_device.name
-            } );
-        } );
+			var devices_list = [];
+			temp_devices.forEach(function (temp_device) {
+				devices_list.push({
+					data: {
+						id: temp_device.data.id
+					},
+					name: temp_device.name
+				});
+			});
 
-        callback( devices );
-    });
+			callback(null, devices_list);
+		});
+	});
 
-    socket.on("add_device", function ( device, callback ) {
+	socket.on("add_device", function (device, callback) {
 
-        // Store device as installed
-        devices.push( getDevice( device.data.id, temp_devices ) );
-    });
+		// Store device as installed
+		devices.push(getDevice(device.data.id, temp_devices));
+
+		if (callback) callback (null, true);
+	});
 };
 
 /**
@@ -86,97 +121,84 @@ module.exports.pair = function (socket) {
  */
 module.exports.capabilities = {
 
-    target_temperature: {
-        get: function ( device, callback ) {
-            if ( device instanceof Error ) return callback( device );
+	target_temperature: {
+		get: function (device, callback) {
+			if (device instanceof Error) return callback(device);
 
-            // Retrieve updated data
-            updateDeviceData( function () {
+			// Retrieve updated data
+			updateDeviceData(function () {
 
-                // Get device data
-                var thermostat = getDevice( device.id, devices );
+				// Get device data
+				var thermostat = getDevice(device.id, devices);
+				if (!thermostat) return callback(device);
 
-                if ( !thermostat ) return callback( device );
+				callback(null, thermostat.data.target_temperature);
+			});
+		},
+		set: function (device, temperature, callback) {
+			if (device instanceof Error) return callback(device);
 
-                callback( null, thermostat.data.target_temperature );
-            } );
-        },
-        set: function ( device, temperature, callback ) {
-            if ( device instanceof Error ) return callback( device );
+			// Get device data
+			var thermostat = getDevice(device.id, devices);
+			if (!thermostat) return callback(device);
 
-            // Catch faulty trigger and max/min temp
-            if ( !temperature ) {
-                callback( true, temperature );
-                return false;
-            }
-            else if ( temperature < 5 ) {
-                temperature = 5;
-            }
-            else if ( temperature > 35 ) {
-                temperature = 35;
-            }
-            neo.setTemperature( Math.round( temperature * 10 ) / 10, device.id, function ( err, success ) {
+			// Catch faulty trigger and max/min temp
+			if (!temperature) {
+				callback(true, temperature);
+				return false;
+			}
+			else if (temperature < 5) {
+				temperature = 5;
+			}
+			else if (temperature > 35) {
+				temperature = 35;
+			}
+			neo.setTemperature(Math.round(temperature * 10) / 10, thermostat.name, function (err, success) {
+				// Return error/success to front-end
+				if (callback) callback(err, temperature);
+			});
+		}
+	},
 
-                // Return error/success to front-end
-                if ( callback ) callback( err, temperature );
-            } );
-        }
-    },
+	measure_temperature: {
+		get: function (device, callback) {
+			if (device instanceof Error) return callback(device);
 
-    measure_temperature: {
-        get: function ( device, callback ) {
-            if ( device instanceof Error ) return callback( device );
+			// Retrieve updated data
+			updateDeviceData(function () {
 
-            // Retrieve updated data
-            updateDeviceData( function () {
+				// Get device data
+				var thermostat = getDevice(device.id, devices);
+				if (!thermostat) return callback(device);
 
-                // Get device data
-                var thermostat = getDevice( device.id, devices );
-                if ( !thermostat ) return callback( device );
-
-                // Callback measured temperature
-                callback( null, thermostat.data.measured_temperature );
-            } );
-        }
-    },
-
-    hold_temperature: {
-        get: function ( device, callback ) {
-
-        },
-        set: function ( device, data, callback ) {
-
-            if ( device instanceof Error ) return callback( device );
-
-            // Catch faulty trigger and max/min temp
-            if ( !data.temperature || !data.time ) {
-                return callback( true, data );
-            }
-
-            neo.setHold( device.id, temperature, hours, minutes, deviceNames, function ( err, success ) {
-
-                // Return error/success to front-end
-                if ( callback ) callback( err, temperature );
-            } )
-
-        }
-    }
+				// Callback measured temperature
+				callback(null, parseInt(thermostat.data.measured_temperature));
+			});
+		}
+	}
 };
 
 /**
  * Delete devices internally when users removes one
  * @param device_data
  */
-module.exports.deleted = function ( device_data ) {
+module.exports.deleted = function (device_data) {
 
-    // Remove ID from installed devices array
-    for ( var x = 0; x < devices.length; x++ ) {
-        if ( devices[ x ].data.id === device_data.id ) {
-            devices = _.reject( devices, function ( id ) {
-                return id === device_data.id;
-            } );
-        }
-    }
+	// Remove ID from installed devices array
+	for (var x = 0; x < devices.length; x++) {
+		if (devices[x].data.id === device_data.id) {
+			devices = _.reject(devices, function (device) {
+				return device.data.id === device_data.id;
+			});
+		}
+	}
+	for (var x = 0; x < temp_devices.length; x++) {
+		if (temp_devices[x].data.id === device_data.id) {
+			temp_devices = _.reject(temp_devices, function (device) {
+				return device.data.id === device_data.id;
+			});
+		}
+	}
 };
 
 /**
@@ -185,16 +207,16 @@ module.exports.deleted = function ( device_data ) {
  * @param device_id
  * @returns {*}
  */
-function getDevice ( device_id, list ) {
-    var devices = list ? list : devices;
+function getDevice(device_id, list) {
+	var devices = list ? list : devices;
 
-    if ( devices.length > 0 ) {
-        for ( var x = 0; x < devices.length; x++ ) {
-            if ( devices[ x ].data.id === device_id ) {
-                return devices[ x ];
-            }
-        }
-    }
+	if (devices.length > 0) {
+		for (var x = 0; x < devices.length; x++) {
+			if (devices[x].data.id === device_id) {
+				return devices[x];
+			}
+		}
+	}
 };
 
 /**
@@ -202,27 +224,24 @@ function getDevice ( device_id, list ) {
  * it internally
  * @param callback
  */
-function updateDeviceData ( callback ) {
+function updateDeviceData(callback) {
 
-    // Request updated information
-    neo.info();
+	if (neo) {
+		// Request updated information
+		neo.info(function (data) {
 
-    // On incoming data
-    neo.on( 'success', function ( data ) {
-
-        // Store new available data for each device
-        data.devices.forEach( function ( device ) {
-            var internal_device = getDevice( device.device, devices );
-            internal_device.data = {
-                id: device.device,
-                target_temperature: device.CURRENT_SET_TEMPERATURE,
-                measured_temperature: device.CURRENT_TEMPERATURE
-            }
-        } );
-
-        // Perform callback
-        if ( callback )callback();
-    } );
+			// Store new available data for each device
+			data.devices.forEach(function (device) {
+				var internal_device = getDevice(generateDeviceID(device.device, device.DEVICE_TYPE), devices);
+				internal_device.data = {
+					id: generateDeviceID(device.device, device.DEVICE_TYPE),
+					target_temperature: device.CURRENT_SET_TEMPERATURE,
+					measured_temperature: device.CURRENT_TEMPERATURE
+				}
+			});
+			if (callback) callback();
+		});
+	}
 }
 
 /**
@@ -231,6 +250,6 @@ function updateDeviceData ( callback ) {
  * @param param2
  * @returns {string} unique device ID
  */
-function generateDeviceID ( param1, param2 ) {
-    return new Buffer( param1 + param2 ).toString( 'base64' );
+function generateDeviceID(param1, param2) {
+	return new Buffer(param1 + param2).toString('base64');
 }

@@ -38,8 +38,7 @@
             "class": "thermostat",
             "capabilities": [
                 "target_temperature",
-                "measure_temperature",
-                "hold_temperature"
+                "measure_temperature"
             ],
             "pair": [
                 {
@@ -57,41 +56,6 @@
         }
     ],
     "flow": {
-        "actions": [
-            {
-                "id": "hold_temperature",
-                "title": {
-                    "en": "Hold temperature",
-                    "nl": "Houd temperatuur vast"
-                },
-                "args": [
-                    {
-                        "name": "temperature",
-                        "type": "range",
-                        "min": 5,
-                        "max": 35,
-                        "step": 0.5,
-                        "unit": "ºC",
-                        "style": {
-                            "width": "40%"
-                        }
-                    },
-                    {
-                        "name": "time",
-                        "type": "number",
-                        "placeholder": {
-                            "en": "For time (hours)",
-                            "nl": "Voor aantal uur"
-                        },
-                        "min": 1,
-                        "max": 9.5,
-                        "step": 0.5,
-                        "style": {
-                            "width": "60%"
-                        }
-                    }
-                ]
-            }
-        ]
+
     }
 }
