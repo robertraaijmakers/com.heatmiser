@@ -57,6 +57,10 @@ module.exports.init = function (devices_data, callback) {
 		});
 	});
 
+	// Start listening for changes on target and measured temperature
+	startPolling();
+
+	// Success
 	callback(null, true);
 };
 
@@ -112,7 +116,7 @@ module.exports.pair = function (socket) {
 		// Store device as installed
 		devices.push(getDevice(device.data.id, temp_devices));
 
-		if (callback) callback (null, true);
+		if (callback) callback(null, true);
 	});
 };
 
@@ -122,6 +126,7 @@ module.exports.pair = function (socket) {
 module.exports.capabilities = {
 
 	target_temperature: {
+
 		get: function (device, callback) {
 			if (device instanceof Error) return callback(device);
 
@@ -135,6 +140,7 @@ module.exports.capabilities = {
 				callback(null, thermostat.data.target_temperature);
 			});
 		},
+
 		set: function (device, temperature, callback) {
 			if (device instanceof Error) return callback(device);
 
@@ -153,7 +159,10 @@ module.exports.capabilities = {
 			else if (temperature > 35) {
 				temperature = 35;
 			}
-			neo.setTemperature(Math.round(temperature * 10) / 10, thermostat.name, function (err, success) {
+
+			// Tell thermostat to change the target temperature
+			neo.setTemperature(Math.round(temperature * 2) / 2, thermostat.name, function (err) {
+
 				// Return error/success to front-end
 				if (callback) callback(err, temperature);
 			});
@@ -161,6 +170,7 @@ module.exports.capabilities = {
 	},
 
 	measure_temperature: {
+
 		get: function (device, callback) {
 			if (device instanceof Error) return callback(device);
 
@@ -172,11 +182,26 @@ module.exports.capabilities = {
 				if (!thermostat) return callback(device);
 
 				// Callback measured temperature
-				callback(null, parseInt(thermostat.data.measured_temperature));
+				callback(null, Math.round(thermostat.data.measured_temperature * 2) / 2);
 			});
 		}
 	}
 };
+
+/**
+ * Heatmiser doesn't support realtime, therefore we have to poll
+ * for changes considering the measured and target temperature
+ */
+function startPolling() {
+
+	// Poll every 15 seconds
+	setInterval(function () {
+
+		// Update device data
+		updateDeviceData();
+
+	}, 15000);
+}
 
 /**
  * Delete devices internally when users removes one
@@ -226,17 +251,39 @@ function getDevice(device_id, list) {
  */
 function updateDeviceData(callback) {
 
+	// Make sure driver properly started
 	if (neo) {
+
 		// Request updated information
 		neo.info(function (data) {
 
 			// Store new available data for each device
 			data.devices.forEach(function (device) {
 				var internal_device = getDevice(generateDeviceID(device.device, device.DEVICE_TYPE), devices);
-				internal_device.data = {
-					id: generateDeviceID(device.device, device.DEVICE_TYPE),
-					target_temperature: device.CURRENT_SET_TEMPERATURE,
-					measured_temperature: device.CURRENT_TEMPERATURE
+
+				// Make sure device exists
+				if (internal_device != null) {
+
+					// Check if there is a difference
+					if (internal_device.data.target_temperature != device.CURRENT_SET_TEMPERATURE) {
+
+						// Trigger target temperature changed
+						module.exports.realtime(generateDeviceID(device.device, device.DEVICE_TYPE), "target_temperature", device.CURRENT_SET_TEMPERATURE);
+					}
+
+					// Check if there is a difference
+					if (Math.round(internal_device.data.measured_temperature * 2) / 2 != Math.round(device.CURRENT_TEMPERATURE * 10) / 10) {
+
+						// Trigger measured temperature changed
+						module.exports.realtime(generateDeviceID(device.device, device.DEVICE_TYPE), "measure_temperature", device.CURRENT_TEMPERATURE);
+					}
+
+					// Update internal data
+					internal_device.data = {
+						id: generateDeviceID(device.device, device.DEVICE_TYPE),
+						target_temperature: device.CURRENT_SET_TEMPERATURE,
+						measured_temperature: device.CURRENT_TEMPERATURE
+					};
 				}
 			});
 			if (callback) callback();

@@ -1,11 +1,11 @@
 {
     "id": "com.heatmiser",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "category": "climate",
     "compatibility": ">=0.1.0",
     "name": {
-        "en": "Heatmiser Thermostat",
-        "nl": "Heatmiser Thermostaat"
+        "en": "Heatmiser Neo",
+        "nl": "Heatmiser Neo"
     },
     "description": {
         "en": "This app lets you control your Heatmiser thermostat using Homey!",
