@@ -268,14 +268,14 @@ function updateDeviceData(callback) {
 					if (internal_device.data.target_temperature != device.CURRENT_SET_TEMPERATURE) {
 
 						// Trigger target temperature changed
-						module.exports.realtime(generateDeviceID(device.device, device.DEVICE_TYPE), "target_temperature", device.CURRENT_SET_TEMPERATURE);
+						module.exports.realtime({id:generateDeviceID(device.device, device.DEVICE_TYPE)}, "target_temperature", device.CURRENT_SET_TEMPERATURE);
 					}
 
 					// Check if there is a difference
 					if (Math.round(internal_device.data.measured_temperature * 2) / 2 != Math.round(device.CURRENT_TEMPERATURE * 2) / 2) {
 
 						// Trigger measured temperature changed
-						module.exports.realtime(generateDeviceID(device.device, device.DEVICE_TYPE), "measure_temperature", device.CURRENT_TEMPERATURE);
+						module.exports.realtime({id:generateDeviceID(device.device, device.DEVICE_TYPE)}, "measure_temperature", device.CURRENT_TEMPERATURE);
 					}
 
 					// Update internal data
