@@ -1,6 +1,6 @@
 {
     "id": "com.heatmiser",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "category": "climate",
     "compatibility": ">=0.1.0",
     "name": {
@@ -21,7 +21,6 @@
     "permissions": [
     ],
     "speech": [
-
     ],
     "drivers": [
         {
