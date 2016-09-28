@@ -26,9 +26,9 @@ var neo;
  * @param callback
  */
 module.exports.init = function (devices, callback) {
-	
+
 	console.log("Initialise Heatmiser");
-	
+
 	devices.forEach(function (device) {
 		addDevice(device);
 	});
@@ -47,25 +47,31 @@ module.exports.init = function (devices, callback) {
  */
 module.exports.pair = function (socket) {
 
-	socket.on("list_devices", function (data, callback)
-	{
+	socket.on("list_devices", function (data, callback) {
+
+		// Pairing timeout
+		var timeout = setTimeout(function() {
+			return callback(null, []);
+		}, 15000);
+
 		neo = new heatmiser.Neo();
 
 		// Found devices
-		neo.on('ready', function (host, port, found_devices)
-		{
+		neo.on('ready', function (host, port, found_devices) {
+			// Clear timeout
+			clearTimeout(timeout);
 			var devices = [];
 			temp_devices = []; // Clear list of temporary devices before starting new pairing.
-			
+
 			// Check for each device if it is already installed, or should be
 			found_devices.forEach(function (device) {
 				var device_id = generateDeviceID(device.device, device.DEVICE_TYPE);
 
 				// Check if we don't have the same device twice in the devices list
 				if (!getDevice(device_id, devices) && !getDevice(device_id, temp_devices)) {
-					
+
 					// If the device wasn't installed before, add it to the temporary devices list.
-					if(!_.findWhere(installed_devices, {id: device_id})) {
+					if (!_.findWhere(installed_devices, { id: device_id })) {
 						temp_devices.push({
 							id: device_id,
 							name: device.device,
@@ -145,9 +151,9 @@ module.exports.capabilities = {
 			}
 
 			// Tell thermostat to change the target temperature (Heatmiser can only work with whole numbers)
-			var forDevice = [ thermostat.name ];
+			var forDevice = [thermostat.name];
 			neo.setTemperature(Math.round(temperature), forDevice, function (err) {
-				
+
 				console.log(err);
 
 				// Return error/success to front-end
@@ -196,25 +202,25 @@ module.exports.deleted = function (device_data) {
  * @param deviceIn
  */
 function addDevice(deviceIn) {
-	
+
 	var device_id = null;
-	if(deviceIn.id !== null) {
+	if (deviceIn.id !== null) {
 		device_id = deviceIn.id;
-		
-		if(typeof deviceIn.data === "undefined" || typeof deviceIn.data.id === "undefined") {
-			
-			if(typeof deviceIn.data === "undefined") {
+
+		if (typeof deviceIn.data === "undefined" || typeof deviceIn.data.id === "undefined") {
+
+			if (typeof deviceIn.data === "undefined") {
 				deviceIn.data = {};
 			}
 			deviceIn.data.id = device_id;
 		}
 	}
-	
-	if(device_id === null) {
+
+	if (device_id === null) {
 		device_id = generateDeviceID(deviceIn, deviceIn.DEVICE_TYPE);
 	}
 
-	if(!_.findWhere(installed_devices, {id: device_id})) {
+	if (!_.findWhere(installed_devices, { id: device_id })) {
 		installed_devices.push(deviceIn);
 	}
 }
@@ -263,7 +269,7 @@ function updateDeviceData(callback) {
 
 		// Request updated information
 		neo.info(function (data) {
-			
+
 			// Store new available data for each device
 			data.devices.forEach(function (device) {
 				var internal_device = getDevice(generateDeviceID(device.device, device.DEVICE_TYPE), installed_devices);
@@ -275,14 +281,14 @@ function updateDeviceData(callback) {
 					if (internal_device.data.target_temperature != device.CURRENT_SET_TEMPERATURE) {
 
 						// Trigger target temperature changed
-						module.exports.realtime({id:generateDeviceID(device.device, device.DEVICE_TYPE)}, "target_temperature", device.CURRENT_SET_TEMPERATURE);
+						module.exports.realtime({ id: generateDeviceID(device.device, device.DEVICE_TYPE) }, "target_temperature", device.CURRENT_SET_TEMPERATURE);
 					}
 
 					// Check if there is a difference
 					if ((Math.round(internal_device.data.measured_temperature * 10) / 10) != (Math.round(device.CURRENT_TEMPERATURE * 10) / 10)) {
 
 						// Trigger measured temperature changed
-						module.exports.realtime({id:generateDeviceID(device.device, device.DEVICE_TYPE)}, "measure_temperature", (Math.round(device.CURRENT_TEMPERATURE * 10) / 10));
+						module.exports.realtime({ id: generateDeviceID(device.device, device.DEVICE_TYPE) }, "measure_temperature", (Math.round(device.CURRENT_TEMPERATURE * 10) / 10));
 					}
 
 					// Update internal data
@@ -292,11 +298,11 @@ function updateDeviceData(callback) {
 						target_temperature: device.CURRENT_SET_TEMPERATURE,
 						measured_temperature: (Math.round(device.CURRENT_TEMPERATURE * 10) / 10)
 					};
-					
+
 					console.log(internal_device);
 				}
 			});
-			
+
 			if (callback) callback();
 		});
 	}
