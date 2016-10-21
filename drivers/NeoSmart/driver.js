@@ -26,9 +26,9 @@ var neo;
  * @param callback
  */
 module.exports.init = function (devices, callback) {
-	
+
 	console.log("Initialise Heatmiser");
-	
+
 	devices.forEach(function (device) {
 		addDevice(device);
 	});
@@ -47,25 +47,31 @@ module.exports.init = function (devices, callback) {
  */
 module.exports.pair = function (socket) {
 
-	socket.on("list_devices", function (data, callback)
-	{
+	socket.on("list_devices", function (data, callback) {
+
+		// Pairing timeout
+		var timeout = setTimeout(function() {
+			return callback(null, []);
+		}, 15000);
+
 		neo = new heatmiser.Neo();
 
 		// Found devices
-		neo.on('ready', function (host, port, found_devices)
-		{
+		neo.on('ready', function (host, port, found_devices) {
+			// Clear timeout
+			clearTimeout(timeout);
 			var devices = [];
 			temp_devices = []; // Clear list of temporary devices before starting new pairing.
-			
+
 			// Check for each device if it is already installed, or should be
 			found_devices.forEach(function (device) {
 				var device_id = generateDeviceID(device.device, device.DEVICE_TYPE);
 
 				// Check if we don't have the same device twice in the devices list
 				if (!getDevice(device_id, devices) && !getDevice(device_id, temp_devices)) {
-					
+
 					// If the device wasn't installed before, add it to the temporary devices list.
-					if(!_.findWhere(installed_devices, {id: device_id})) {
+					if (!_.findWhere(installed_devices, { id: device_id })) {
 						temp_devices.push({
 							id: device_id,
 							name: device.device,
@@ -147,9 +153,9 @@ module.exports.capabilities = {
 			}
 
 			// Tell thermostat to change the target temperature (Heatmiser can only work with whole numbers)
-			var forDevice = [ thermostat.name ];
+			var forDevice = [thermostat.name];
 			neo.setTemperature(Math.round(temperature), forDevice, function (err) {
-				
+
 				console.log(err);
 
 				// Return error/success to front-end
@@ -164,8 +170,8 @@ module.exports.capabilities = {
 			if (device instanceof Error) return callback(device);
 
 			// Retrieve updated data
-			updateDeviceData(function () {
-
+			updateDeviceData(function ()
+			{
 				// Get device data
 				var thermostat = getDevice(device.id, installed_devices);
 				if (!thermostat) return callback(device);
@@ -198,7 +204,7 @@ module.exports.deleted = function (device_data) {
  * @param deviceIn
  */
 function addDevice(deviceIn) {
-	
+
 	var device_id = null;
 	
 	if(deviceIn.id !== null) {
@@ -219,12 +225,12 @@ function addDevice(deviceIn) {
 			deviceIn.data.id = device_id;
 		}
 	}
-	
-	if(device_id === null) {
+
+	if (device_id === null) {
 		device_id = generateDeviceID(deviceIn, deviceIn.DEVICE_TYPE);
 	}
 
-	if(!_.findWhere(installed_devices, {id: device_id})) {
+	if (!_.findWhere(installed_devices, { id: device_id })) {
 		installed_devices.push(deviceIn);
 	}
 }
@@ -273,7 +279,7 @@ function updateDeviceData(callback) {
 
 		// Request updated information
 		neo.info(function (data) {
-			
+
 			// Store new available data for each device
 			data.devices.forEach(function (device) {
 				var internal_device = getDevice(generateDeviceID(device.device, device.DEVICE_TYPE), installed_devices);
@@ -314,14 +320,17 @@ function updateDeviceData(callback) {
 						// Check if difference is later then x-minutes (so that we disable overload of data points in logger)
 						var triggerChange = false;
 						
-						// If change in temperature is bigger than 0.2 between two measure points 
+						// If change in temperature is bigger than 0.3 between two measure points
+						// Neo-Stat is quite fluctuant in temperature measurement and this results in very heavy logging and triggering of flows. Only temperature drops of + 0.3 or - 0.3 are logged.
+						// The status in the card is always updated. Only the logging is not updated that frequently. This prevents crashes and also prevents that the logging will stop every two to three days resulting in non-responding thermostats.
+						// Please respect this threshold and do not alter it.
 						if(internal_device.data.previous_changed_temperature == null
-							|| (internal_device.data.previous_changed_temperature > currentMeasuredTemperature && internal_device.data.previous_changed_temperature-currentMeasuredTemperature > 0.2)
-							|| (internal_device.data.previous_changed_temperature < currentMeasuredTemperature && currentMeasuredTemperature-internal_device.data.previous_changed_temperature > 0.2)) {
+							|| (internal_device.data.previous_changed_temperature > currentMeasuredTemperature && internal_device.data.previous_changed_temperature-currentMeasuredTemperature > 0.3)
+							|| (internal_device.data.previous_changed_temperature < currentMeasuredTemperature && currentMeasuredTemperature-internal_device.data.previous_changed_temperature > 0.3)) {
 									triggerChange = true;
 						}
 						
-						// If time between changes is bigger than 15 minutes
+						// If time between changes is bigger then 15 minutes and temperature changed, log.
 						var currentTime = date.getTime();
 						if(internal_device.data.previous_changed_temperature_time == null || currentTime-internal_device.data.previous_changed_temperature_time > 900000) {
 							triggerChange = true;
@@ -340,7 +349,7 @@ function updateDeviceData(callback) {
 					}
 				}
 			});
-			
+
 			if (callback) callback();
 		});
 	}
