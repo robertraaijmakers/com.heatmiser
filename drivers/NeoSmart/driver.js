@@ -72,7 +72,9 @@ module.exports.pair = function (socket) {
 							data: {
 								id: device_id,
 								target_temperature: null, // Needs to be null so that item is directly visible after installation in insights
-								measured_temperature: null // Needs to be null so that item is directly visible after installation in insights
+								measured_temperature: null, // Needs to be null so that item is directly visible after installation in insights
+								previous_changed_temperature: null,
+								previous_changed_temperature_time: null
 							}
 						});
 					}
@@ -198,14 +200,22 @@ module.exports.deleted = function (device_data) {
 function addDevice(deviceIn) {
 	
 	var device_id = null;
+	
 	if(deviceIn.id !== null) {
 		device_id = deviceIn.id;
 		
 		if(typeof deviceIn.data === "undefined" || typeof deviceIn.data.id === "undefined") {
 			
 			if(typeof deviceIn.data === "undefined") {
-				deviceIn.data = {};
+				deviceIn.data = { // Create data object (to make sure it is always available).
+					id: null,
+					target_temperature: null,
+					measured_temperature: null,
+					previous_changed_temperature: null,
+					previous_changed_temperature_time: null
+				};
 			}
+			
 			deviceIn.data.id = device_id;
 		}
 	}
@@ -270,30 +280,64 @@ function updateDeviceData(callback) {
 
 				// Make sure device exists
 				if (internal_device != null) {
-
-					// Check if there is a difference
-					if (internal_device.data.target_temperature != device.CURRENT_SET_TEMPERATURE) {
-
-						// Trigger target temperature changed
-						module.exports.realtime({id:generateDeviceID(device.device, device.DEVICE_TYPE)}, "target_temperature", device.CURRENT_SET_TEMPERATURE);
-					}
-
-					// Check if there is a difference
-					if ((Math.round(internal_device.data.measured_temperature * 10) / 10) != (Math.round(device.CURRENT_TEMPERATURE * 10) / 10)) {
-
-						// Trigger measured temperature changed
-						module.exports.realtime({id:generateDeviceID(device.device, device.DEVICE_TYPE)}, "measure_temperature", (Math.round(device.CURRENT_TEMPERATURE * 10) / 10));
-					}
-
+					
+					var date = new Date();
+					
 					// Update internal data
 					internal_device.name = device.device; // Needed for the set-temperature function. Removed after reboot. Homey only holds IDs of items.
-					internal_device.data = {
-						id: generateDeviceID(device.device, device.DEVICE_TYPE),
-						target_temperature: device.CURRENT_SET_TEMPERATURE,
-						measured_temperature: (Math.round(device.CURRENT_TEMPERATURE * 10) / 10)
-					};
 					
-					console.log(internal_device);
+					// If device.data doesn't exist yet (e.g. on first update) fill this with temporary (initial) data
+					if(typeof internal_device.data === "undefined")
+					{
+						// Update internal data
+						internal_device.data = {
+							id: generateDeviceID(device.device, device.DEVICE_TYPE),
+							target_temperature: null,
+							measured_temperature: null,
+							previous_changed_temperature: null,
+							previous_changed_temperature_time: null
+						};
+					}
+					
+					// Check if there is a difference
+					if (internal_device.data.target_temperature != device.CURRENT_SET_TEMPERATURE) {
+						module.exports.realtime({id:generateDeviceID(device.device, device.DEVICE_TYPE)}, "target_temperature", device.CURRENT_SET_TEMPERATURE);
+						internal_device.data.target_temperature = device.CURRENT_SET_TEMPERATURE; // Update internal device.
+					}
+
+					var currentMeasuredTemperature = (Math.round(device.CURRENT_TEMPERATURE * 10) / 10);
+					var previousMeasuredTemperature = (Math.round(internal_device.data.measured_temperature * 10) / 10);
+
+					// Check if there is a difference
+					if (previousMeasuredTemperature != currentMeasuredTemperature) {
+
+						// Check if difference is later then x-minutes (so that we disable overload of data points in logger)
+						var triggerChange = false;
+						
+						// If change in temperature is bigger than 0.2 between two measure points 
+						if(internal_device.data.previous_changed_temperature == null
+							|| (internal_device.data.previous_changed_temperature > currentMeasuredTemperature && internal_device.data.previous_changed_temperature-currentMeasuredTemperature > 0.2)
+							|| (internal_device.data.previous_changed_temperature < currentMeasuredTemperature && currentMeasuredTemperature-internal_device.data.previous_changed_temperature > 0.2)) {
+									triggerChange = true;
+						}
+						
+						// If time between changes is bigger than 15 minutes
+						var currentTime = date.getTime();
+						if(internal_device.data.previous_changed_temperature_time == null || currentTime-internal_device.data.previous_changed_temperature_time > 900000) {
+							triggerChange = true;
+						}
+						
+						// Trigger target temperature changed
+						if(triggerChange) {
+							internal_device.data.previous_changed_temperature = currentMeasuredTemperature;
+							internal_device.data.previous_changed_temperature_time = date.getTime();
+							
+							// Trigger measured temperature changed
+							module.exports.realtime({id:generateDeviceID(device.device, device.DEVICE_TYPE)}, "measure_temperature", currentMeasuredTemperature);
+						}
+						
+						internal_device.data.measured_temperature = currentMeasuredTemperature; // Always update measured_temperature in device view (internal device).
+					}
 				}
 			});
 			
